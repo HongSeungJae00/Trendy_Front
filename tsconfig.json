@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "es6",  // ES6로 통일
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "node",  // Node로 통일
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "baseUrl": ".",  // 프로젝트 루트로 설정
+    "paths": {
+      "@/*": ["./*"],  // 루트 디렉토리 접근
+      "@/components/*": ["components/*"]  // components alias 적용
+    },
+    "types": ["jest", "@testing-library/jest-dom"],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}

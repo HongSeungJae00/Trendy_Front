@@ -1,0 +1,95 @@
+name: 프론트엔드 CI/CD 파이프라인
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: '배포 환경 (dev/prod)'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: trendy-frontend
+
+jobs:
+  build:
+    name: 이미지 빌드 및 푸시
+    runs-on: ubuntu-latest
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v3
+
+      - name: Node.js 설정
+        uses: actions/setup-node@v3
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: Next.js 빌드
+        run: npm run build
+
+      - name: 환경 설정
+        id: env-setup
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "ENV=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "ENV=prod" >> $GITHUB_OUTPUT
+          else
+            echo "ENV=dev" >> $GITHUB_OUTPUT
+          fi
+          
+          if [ "${{ steps.env-setup.outputs.ENV }}" == "prod" ]; then
+            echo "ECR_REPOSITORY=prod/trendy-frontend" >> $GITHUB_ENV
+          else
+            echo "ECR_REPOSITORY=trendy-frontend" >> $GITHUB_ENV
+          fi
+        
+      - name: AWS 자격 증명 설정
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: ECR 로그인
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+      
+      - name: 이미지 태그 설정
+        id: image-tag
+        run: |
+          VERSION=$(echo ${{ github.sha }} | cut -c1-7)
+          echo "VERSION=$VERSION"
+          echo "tag=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Docker 빌드 및 푸시
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ steps.image-tag.outputs.tag }}
+        run: |
+          echo "이미지 빌드 중: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+      
+      - name: 인프라 저장소 업데이트 트리거
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          token: ${{ secrets.GIT_HUB_TOKEN }}
+          repository: sophist1420/Trendy_Kubernetes
+          event-type: update-frontend-image
+          client-payload: '{"image_tag": "${{ steps.image-tag.outputs.tag }}", "environment": "${{ steps.env-setup.outputs.ENV }}", "repo": "${{ env.ECR_REPOSITORY }}"}'
