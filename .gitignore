@@ -5,3 +5,4 @@ coverage/
 test-reports/
 node_modules/
 .env.local
+scripts/
